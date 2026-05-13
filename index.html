@@ -213,8 +213,18 @@
                     </div>
                     
                     <div id="goal-settings" class="space-y-3 p-4 bg-obs-900/50 rounded-xl border border-obs-700">
+                        <!-- Mode Selector -->
+                        <div>
+                            <label class="block text-[10px] text-slate-400 mb-1">Mode Target</label>
+                            <select id="cfg-goal-mode" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
+                                <option value="bar">Progress Bar (Manual)</option>
+                                <option value="live">Live YouTube Subs</option>
+                            </select>
+                        </div>
                         <input type="text" id="cfg-goal-title" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="Sub Goal">
-                        <div class="grid grid-cols-2 gap-3">
+                        
+                        <!-- Manual Progress Inputs -->
+                        <div id="goal-manual-inputs" class="grid grid-cols-2 gap-3">
                             <div>
                                 <label class="block text-[10px] text-slate-400 mb-1">Sekarang</label>
                                 <input type="number" id="cfg-goal-cur" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm" value="124">
@@ -223,6 +233,21 @@
                                 <label class="block text-[10px] text-slate-400 mb-1">Target</label>
                                 <input type="number" id="cfg-goal-max" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm" value="500">
                             </div>
+                        </div>
+
+                        <!-- Live API Inputs -->
+                        <div id="goal-live-inputs" class="space-y-3 hidden">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">YouTube Channel ID (UC...)</label>
+                                <input type="text" id="cfg-goal-ytid" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm font-mono text-xs" placeholder="UCxxxxxxxxxxxxxxxxxxxx">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">Google API Key</label>
+                                <input type="password" id="cfg-goal-apikey" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm font-mono text-xs" placeholder="AIzaSy...">
+                            </div>
+                            <button onclick="fetchLiveSubs()" class="w-full bg-obs-700 hover:bg-obs-600 border border-obs-600 rounded-lg py-2.5 text-xs font-bold text-emerald-400 transition flex items-center justify-center gap-2">
+                                <i class="fas fa-sync-alt"></i> Test Ambil Data API
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -338,15 +363,67 @@
                             <div class="flex justify-between items-end mb-3">
                                 <span id="ov-goal-title" class="text-slate-300 font-bold text-lg uppercase tracking-wider">Sub Goal</span>
                                 <div class="font-display font-black flex items-baseline gap-1">
-                                    <span id="ov-goal-cur" class="theme-text text-3xl drop-shadow-[0_0_5px_currentColor]">0</span>
-                                    <span class="text-slate-500 text-xl">/</span>
+                                    <span id="ov-goal-cur" class="theme-text text-3xl drop-shadow-[0_0_5px_currentColor] transition-all duration-300">0</span>
+                                    <span id="ov-goal-divider" class="text-slate-500 text-xl">/</span>
                                     <span id="ov-goal-max" class="text-slate-400 text-xl">0</span>
                                 </div>
                             </div>
                             <!-- Progress Bar -->
-                            <div class="w-full h-4 bg-obs-900 rounded-full p-[2px] border border-white/10 shadow-inner">
+                            <div id="ov-goal-bar-container" class="w-full h-4 bg-obs-900 rounded-full p-[2px] border border-white/10 shadow-inner">
                                 <div id="ov-goal-fill" class="h-full rounded-full theme-bg relative overflow-hidden transition-all duration-1000 ease-out" style="width: 0%;">
                                     <div class="absolute inset-0 bar-shimmer"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tombol Interact OBS (Murni untuk OBS Interact, hidden otomatis) -->
+                    <button id="obs-interact-btn" onclick="openInteractModal()" class="absolute top-4 left-4 z-[90] glass-panel p-3 rounded-xl text-white/50 hover:text-white hover:bg-obs-700 opacity-0 transition-all duration-300 pointer-events-auto hidden group shadow-xl border border-white/20">
+                        <i class="fas fa-sliders-h text-xl group-hover:rotate-90 transition-transform"></i>
+                        <span class="ml-2 font-bold text-sm hidden group-hover:inline-block tracking-wide">OBS Interact Panel</span>
+                    </button>
+
+                    <!-- Modal Interact OBS (Akan Muncul Jika Tombol Di Atas Diklik di OBS) -->
+                    <div id="obs-interact-modal" class="absolute inset-0 z-[100] bg-black/80 backdrop-blur-sm hidden flex items-center justify-center pointer-events-auto">
+                        <div class="glass-panel p-6 w-[450px] border border-obs-600 shadow-2xl slide-up-in relative">
+                            <button onclick="closeInteractModal()" class="absolute top-4 right-4 text-slate-400 hover:text-white"><i class="fas fa-times text-xl"></i></button>
+                            
+                            <h2 class="text-xl font-bold text-white mb-1"><i class="fas fa-sliders-h text-indigo-400"></i> OBS Live Control</h2>
+                            <p class="text-xs text-slate-400 mb-5">Tutup panel ini segera setelah selesai edit agar tidak terlihat di stream!</p>
+
+                            <div class="space-y-4">
+                                <!-- Marquee Live Edit -->
+                                <div>
+                                    <label class="block text-xs font-medium text-slate-400 mb-1">Teks Berjalan (Marquee)</label>
+                                    <input type="text" id="int-marquee" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2 text-sm text-white" placeholder="Info stream...">
+                                </div>
+
+                                <!-- Alert Trigger -->
+                                <div class="pt-2 border-t border-white/10">
+                                    <button onclick="triggerDemoAlert()" class="w-full bg-indigo-600/20 hover:bg-indigo-600/40 border border-indigo-500/50 rounded-lg py-2.5 text-sm font-bold text-indigo-400 transition flex items-center justify-center gap-2 shadow-inner">
+                                        <i class="fas fa-bell animate-bounce"></i> Trigger Manual Alert
+                                    </button>
+                                </div>
+                                
+                                <!-- Goal Quick Edit -->
+                                <div class="pt-2 border-t border-white/10">
+                                    <div class="flex justify-between items-center mb-2">
+                                        <label class="block text-xs font-bold text-emerald-400"><i class="fas fa-bullseye"></i> Goal / Target Edit</label>
+                                        <span id="int-goal-status" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">Mode: Bar</span>
+                                    </div>
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <div>
+                                            <label class="block text-[10px] text-slate-400 mb-1">Angka Saat Ini</label>
+                                            <input type="number" id="int-goal-cur" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-1.5 text-sm text-white">
+                                        </div>
+                                        <div>
+                                            <label class="block text-[10px] text-slate-400 mb-1">Target Maksimal</label>
+                                            <input type="number" id="int-goal-max" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-1.5 text-sm text-white">
+                                        </div>
+                                    </div>
+                                    <div class="mt-3 text-right">
+                                        <button onclick="saveInteractData()" class="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-bold px-4 py-2.5 rounded-lg transition shadow-lg flex items-center justify-center gap-2"><i class="fas fa-save"></i> Terapkan Perubahan</button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -372,7 +449,7 @@
             theme: 'cyan',
             fx: 'none',
             socials: { yt: '', ig: '', tt: '' },
-            goal: { active: true, title: 'Sub Goal', cur: 0, max: 100 },
+            goal: { active: true, mode: 'bar', title: 'Sub Goal', cur: 0, max: 100, ytId: '', apiKey: '' },
             text: { status: '🔴 LIVE', marquee: '' },
             isOBSMode: false
         };
@@ -462,12 +539,32 @@
             if (state.goal.active) {
                 goalCont.parentElement.classList.remove('hidden');
                 document.getElementById('ov-goal-title').textContent = state.goal.title;
-                document.getElementById('ov-goal-cur').textContent = state.goal.cur;
-                document.getElementById('ov-goal-max').textContent = state.goal.max;
                 
-                let pct = 0;
-                if(state.goal.max > 0) pct = Math.min((state.goal.cur / state.goal.max) * 100, 100);
-                document.getElementById('ov-goal-fill').style.width = `${pct}%`;
+                const curEl = document.getElementById('ov-goal-cur');
+                // Efek denyut jika ada penambahan
+                if(curEl.textContent !== state.goal.cur.toString() && curEl.textContent !== '0') {
+                    curEl.classList.remove('alert-pop');
+                    void curEl.offsetWidth; // trigger reflow
+                    curEl.classList.add('alert-pop');
+                }
+                curEl.textContent = state.goal.cur.toLocaleString('id-ID');
+
+                if (state.goal.mode === 'live') {
+                    // Mode API Live: Sembunyikan garis miring, target maks, dan progress bar
+                    document.getElementById('ov-goal-divider').classList.add('hidden');
+                    document.getElementById('ov-goal-max').classList.add('hidden');
+                    document.getElementById('ov-goal-bar-container').classList.add('hidden');
+                } else {
+                    // Mode Manual Bar: Tampilkan semua
+                    document.getElementById('ov-goal-divider').classList.remove('hidden');
+                    document.getElementById('ov-goal-max').classList.remove('hidden');
+                    document.getElementById('ov-goal-bar-container').classList.remove('hidden');
+                    
+                    document.getElementById('ov-goal-max').textContent = state.goal.max.toLocaleString('id-ID');
+                    let pct = 0;
+                    if(state.goal.max > 0) pct = Math.min((state.goal.cur / state.goal.max) * 100, 100);
+                    document.getElementById('ov-goal-fill').style.width = `${pct}%`;
+                }
             } else {
                 goalCont.parentElement.classList.add('hidden');
             }
@@ -563,6 +660,98 @@
             } catch(e) {} // ignore if audio blocked
         }
 
+        // --- YOUTUBE LIVE SUBS API LOGIC ---
+        async function fetchLiveSubs() {
+            if (state.goal.mode !== 'live' || !state.goal.ytId || !state.goal.apiKey) return;
+            try {
+                const url = `https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${state.goal.ytId}&key=${state.goal.apiKey}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                
+                if (data.items && data.items.length > 0) {
+                    state.goal.cur = parseInt(data.items[0].statistics.subscriberCount);
+                    renderCanvas();
+                    if(!state.isOBSMode) showToast(`Data API Berhasil! Live Subs: ${state.goal.cur.toLocaleString()}`);
+                } else if(data.error) {
+                    if(!state.isOBSMode) showToast(`Error API: ${data.error.message}`, 'error');
+                }
+            } catch (err) {
+                console.error("YT API Error", err);
+                if(!state.isOBSMode) showToast("Gagal memanggil API YouTube.", 'error');
+            }
+        }
+
+        // Timer sinkronisasi API setiap 1 Menit
+        setInterval(() => {
+            if (state.goal.active && state.goal.mode === 'live') {
+                fetchLiveSubs();
+            }
+        }, 60000);
+
+        // --- OBS INTERACT PANEL LOGIC ---
+        let obsMouseTimer;
+        function setupOBSInteract() {
+            if (!state.isOBSMode) return;
+            
+            const btn = document.getElementById('obs-interact-btn');
+            btn.classList.remove('hidden'); // Activate the element
+            
+            // Tampilkan tombol saat mouse bergerak (Fitur Interaksi OBS)
+            document.addEventListener('mousemove', () => {
+                btn.style.opacity = '1';
+                clearTimeout(obsMouseTimer);
+                obsMouseTimer = setTimeout(() => {
+                    btn.style.opacity = '0';
+                }, 4000); // Sembunyi setelah 4 detik tidak ada gerakan
+            });
+        }
+
+        function openInteractModal() {
+            const modal = document.getElementById('obs-interact-modal');
+            modal.classList.remove('hidden');
+            
+            // Sinkronkan form modal dengan nilai state saat ini
+            document.getElementById('int-marquee').value = state.text.marquee;
+            document.getElementById('int-goal-cur').value = state.goal.cur;
+            document.getElementById('int-goal-max').value = state.goal.max;
+            
+            const statusEl = document.getElementById('int-goal-status');
+            if (state.goal.mode === 'live') {
+                statusEl.textContent = 'Mode Aktif: Live Subs (API)';
+                statusEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-900/50 text-emerald-400 border border-emerald-500/30';
+                document.getElementById('int-goal-max').disabled = true;
+                document.getElementById('int-goal-max').classList.add('opacity-40', 'cursor-not-allowed');
+                document.getElementById('int-goal-cur').disabled = true;
+                document.getElementById('int-goal-cur').classList.add('opacity-40', 'cursor-not-allowed');
+            } else {
+                statusEl.textContent = 'Mode Aktif: Progress Bar';
+                statusEl.className = 'text-[10px] px-2 py-0.5 rounded-full bg-indigo-900/50 text-indigo-400 border border-indigo-500/30';
+                document.getElementById('int-goal-max').disabled = false;
+                document.getElementById('int-goal-max').classList.remove('opacity-40', 'cursor-not-allowed');
+                document.getElementById('int-goal-cur').disabled = false;
+                document.getElementById('int-goal-cur').classList.remove('opacity-40', 'cursor-not-allowed');
+            }
+        }
+
+        function closeInteractModal() {
+            document.getElementById('obs-interact-modal').classList.add('hidden');
+        }
+
+        function saveInteractData() {
+            state.text.marquee = document.getElementById('int-marquee').value;
+            
+            // Jika Manual Mode, perbarui angka
+            if (state.goal.mode === 'bar') {
+                state.goal.cur = parseInt(document.getElementById('int-goal-cur').value) || 0;
+            }
+            state.goal.max = parseInt(document.getElementById('int-goal-max').value) || 0;
+            
+            // Simpan pembaruan ke LocalStorage agar tetap bertahan meski OBS di-refresh
+            localStorage.setItem('sanobs_live_override', JSON.stringify(state));
+            
+            renderCanvas();
+            closeInteractModal();
+        }
 
         // --- BIND INPUTS TO STATE (Realtime) ---
         function bindInputs() {
@@ -588,6 +777,27 @@
             bindObj('cfg-goal-title', state.goal, 'title', renderCanvas);
             bindObj('cfg-goal-cur', state.goal, 'cur', renderCanvas);
             bindObj('cfg-goal-max', state.goal, 'max', renderCanvas);
+            
+            // API Bindings (Tidak merender otomatis karena harus tekan Test)
+            bindObj('cfg-goal-ytid', state.goal, 'ytId', null);
+            bindObj('cfg-goal-apikey', state.goal, 'apiKey', null);
+
+            // Toggle UI Dashboard (Mode Goal)
+            const modeSelect = document.getElementById('cfg-goal-mode');
+            modeSelect.value = state.goal.mode;
+            const toggleDashModeUI = () => {
+                const isLive = modeSelect.value === 'live';
+                document.getElementById('goal-manual-inputs').classList.toggle('hidden', isLive);
+                document.getElementById('goal-live-inputs').classList.toggle('hidden', !isLive);
+            };
+            
+            modeSelect.addEventListener('change', () => {
+                state.goal.mode = modeSelect.value;
+                toggleDashModeUI();
+                renderCanvas();
+                if(state.goal.mode === 'live') fetchLiveSubs();
+            });
+            toggleDashModeUI(); // Jalankan sekali saat load
             
             bindObj('cfg-status', state.text, 'status', renderCanvas);
             bindObj('cfg-marquee', state.text, 'marquee', renderCanvas);
@@ -722,6 +932,18 @@
                 document.body.classList.add('obs-mode');
                 // Dummy bg dihapus di obs mode
                 document.getElementById('dummy-bg').style.display = 'none'; 
+                
+                // Jika user pernah ngedit secara langsung di Interact OBS, timpa datanya
+                const overrideData = localStorage.getItem('sanobs_live_override');
+                if(overrideData) {
+                    try {
+                        const parsedOverride = JSON.parse(overrideData);
+                        state = { ...state, ...parsedOverride };
+                    } catch(e){}
+                }
+
+                // Inisialisasi Mouse Tracker untuk panel interact
+                setupOBSInteract();
             } else {
                 // Inisialisasi UI Dashboard
                 bindInputs();
@@ -731,6 +953,11 @@
             // Render Awal Canvas
             applyTheme();
             renderCanvas();
+
+            // Panggil API jika mode live aktif di awal
+            if(state.goal.active && state.goal.mode === 'live') {
+                fetchLiveSubs();
+            }
         }
 
         // Jalankan saat load
