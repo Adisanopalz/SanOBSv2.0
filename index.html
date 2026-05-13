@@ -1,1 +1,741 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SanOBS Pro - Live Stream Overlay</title>
+    
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700;900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Plus Jakarta Sans"', 'sans-serif'],
+                        display: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        obs: {
+                            900: '#0B0E14',
+                            800: '#151A23',
+                            700: '#1F2633',
+                            accent: '#6366F1'
+                        }
+                    },
+                    animation: {
+                        'spin-slow': 'spin 8s linear infinite',
+                        'shimmer': 'shimmer 2s linear infinite',
+                        'float': 'float 3s ease-in-out infinite',
+                    },
+                    keyframes: {
+                        shimmer: {
+                            '0%': { backgroundPosition: '-1000px 0' },
+                            '100%': { backgroundPosition: '1000px 0' }
+                        },
+                        float: {
+                            '0%, 100%': { transform: 'translateY(0)' },
+                            '50%': { transform: 'translateY(-10px)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
 
+    <style>
+        body {
+            background-color: #0B0E14;
+            color: #E2E8F0;
+            overflow-x: hidden;
+        }
+
+        /* Mode OBS sesungguhnya (Background Transparan) */
+        body.obs-mode {
+            background-color: transparent !important;
+            overflow: hidden !important;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #151A23; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+
+        /* Widget Glass Panel */
+        .glass-panel {
+            background: rgba(21, 26, 35, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        /* Animasi Rotator */
+        .slide-up-in { animation: slideUpIn 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .slide-up-out { animation: slideUpOut 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        
+        @keyframes slideUpIn {
+            0% { transform: translateY(100%); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes slideUpOut {
+            0% { transform: translateY(0); opacity: 1; }
+            100% { transform: translateY(-100%); opacity: 0; }
+        }
+
+        /* Alert Animation */
+        .alert-pop {
+            animation: popIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards,
+                       popOut 0.5s cubic-bezier(0.36, 0, 0.66, -0.56) 4s forwards;
+            opacity: 0;
+            transform: scale(0.8) translateY(20px);
+        }
+
+        @keyframes popIn {
+            to { opacity: 1; transform: scale(1) translateY(0); }
+        }
+        @keyframes popOut {
+            to { opacity: 0; transform: scale(0.8) translateY(-20px); }
+        }
+
+        /* Goal Bar Shimmer */
+        .bar-shimmer {
+            background-image: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+            background-size: 1000px 100%;
+            animation: shimmer 2s infinite linear;
+        }
+
+        /* Skala Preview Canvas */
+        #obs-canvas {
+            width: 1920px;
+            height: 1080px;
+            transform-origin: top left;
+            position: absolute;
+            top: 0; left: 0;
+        }
+
+        /* Menyembunyikan UI Dashboard di Mode OBS */
+        body.obs-mode #dashboard-ui { display: none !important; }
+        body.obs-mode #preview-wrapper { 
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            border: none; border-radius: 0; transform: none !important;
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="toast-container" class="fixed bottom-5 right-5 z-[100] flex flex-col gap-2 pointer-events-none"></div>
+
+    <div id="dashboard-ui" class="min-h-screen flex flex-col lg:flex-row bg-obs-900">
+        
+        <!-- SIDEBAR PENGATURAN -->
+        <aside class="w-full lg:w-[450px] lg:h-screen flex flex-col border-r border-obs-700 bg-obs-800 z-20 shadow-2xl">
+            
+            <!-- Header Sidebar -->
+            <div class="p-6 border-b border-obs-700 flex justify-between items-center bg-obs-900/50 backdrop-blur">
+                <div>
+                    <h1 class="text-2xl font-display font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-cyan-400">
+                        SanOBS <span class="text-white">Pro</span>
+                    </h1>
+                    <p class="text-xs text-slate-400 mt-1">Real-time Stream Overlay Generator</p>
+                </div>
+            </div>
+
+            <!-- Konten Pengaturan (Scrollable) -->
+            <div class="flex-1 overflow-y-auto p-6 space-y-8">
+                
+                <!-- Section: Tema -->
+                <div>
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <i class="fas fa-palette text-indigo-400"></i> Visual & Tema
+                    </h2>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Aksen Warna</label>
+                            <div class="grid grid-cols-5 gap-2" id="theme-selector">
+                                <button class="h-10 rounded-lg bg-cyan-500 ring-2 ring-cyan-500 ring-offset-2 ring-offset-obs-800" data-theme="cyan"></button>
+                                <button class="h-10 rounded-lg bg-indigo-500 opacity-50 hover:opacity-100 transition" data-theme="indigo"></button>
+                                <button class="h-10 rounded-lg bg-emerald-500 opacity-50 hover:opacity-100 transition" data-theme="emerald"></button>
+                                <button class="h-10 rounded-lg bg-amber-500 opacity-50 hover:opacity-100 transition" data-theme="amber"></button>
+                                <button class="h-10 rounded-lg bg-rose-500 opacity-50 hover:opacity-100 transition" data-theme="rose"></button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Efek Background</label>
+                            <select id="cfg-fx" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2.5 text-sm text-white focus:ring-2 focus:ring-indigo-500 outline-none transition">
+                                <option value="none">Bersih (Tanpa Efek)</option>
+                                <option value="particles">Partikel Melayang</option>
+                                <option value="matrix">Digital Rain (Matrix)</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Sosial Media -->
+                <div>
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <i class="fas fa-hashtag text-cyan-400"></i> Sosial Media Rotator
+                    </h2>
+                    <div class="space-y-3">
+                        <div class="relative">
+                            <i class="fab fa-youtube absolute left-4 top-3 text-red-500"></i>
+                            <input type="text" id="cfg-soc-yt" class="w-full bg-obs-900 border border-obs-700 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="Nama Channel YouTube">
+                        </div>
+                        <div class="relative">
+                            <i class="fab fa-instagram absolute left-4 top-3 text-pink-500"></i>
+                            <input type="text" id="cfg-soc-ig" class="w-full bg-obs-900 border border-obs-700 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="@username_ig">
+                        </div>
+                        <div class="relative">
+                            <i class="fab fa-tiktok absolute left-4 top-3 text-white"></i>
+                            <input type="text" id="cfg-soc-tt" class="w-full bg-obs-900 border border-obs-700 rounded-lg pl-10 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" placeholder="@username_tiktok">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Target Bar -->
+                <div>
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                            <i class="fas fa-bullseye text-emerald-400"></i> Target Goal
+                        </h2>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" id="tgl-goal" class="sr-only peer" checked>
+                            <div class="w-9 h-5 bg-obs-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                        </label>
+                    </div>
+                    
+                    <div id="goal-settings" class="space-y-3 p-4 bg-obs-900/50 rounded-xl border border-obs-700">
+                        <input type="text" id="cfg-goal-title" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2 text-sm focus:ring-2 focus:ring-indigo-500 outline-none" value="Sub Goal">
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">Sekarang</label>
+                                <input type="number" id="cfg-goal-cur" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm" value="124">
+                            </div>
+                            <div>
+                                <label class="block text-[10px] text-slate-400 mb-1">Target</label>
+                                <input type="number" id="cfg-goal-max" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-3 py-2 text-sm" value="500">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section: Teks Tambahan & Alert -->
+                <div>
+                    <h2 class="text-sm font-bold text-slate-300 uppercase tracking-wider mb-4 flex items-center gap-2">
+                        <i class="fas fa-layer-group text-amber-400"></i> Teks & Alert (Demo)
+                    </h2>
+                    <div class="space-y-3">
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Status Kiri Atas</label>
+                            <input type="text" id="cfg-status" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2.5 text-sm" value="🔴 LIVE">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-slate-400 mb-1">Teks Berjalan (Marquee)</label>
+                            <input type="text" id="cfg-marquee" class="w-full bg-obs-900 border border-obs-700 rounded-lg px-4 py-2.5 text-sm" placeholder="Selamat datang di stream!">
+                        </div>
+                        <div class="pt-2">
+                            <button onclick="triggerDemoAlert()" class="w-full bg-obs-700 hover:bg-obs-600 border border-obs-600 rounded-lg px-4 py-2.5 text-sm font-medium transition flex items-center justify-center gap-2">
+                                <i class="fas fa-bell text-amber-400"></i> Test Alert Pop-up
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Footer Sidebar: Generate URL -->
+            <div class="p-6 border-t border-obs-700 bg-obs-900 z-10">
+                <button onclick="generateOBSUrl()" class="w-full group relative inline-flex items-center justify-center px-8 py-3.5 text-base font-bold text-white transition-all duration-200 bg-indigo-600 border border-transparent rounded-xl hover:bg-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 overflow-hidden">
+                    <div class="absolute inset-0 w-full h-full -mt-1 rounded-lg opacity-30 bg-gradient-to-b from-transparent via-transparent to-black"></div>
+                    <span class="relative flex items-center gap-2"><i class="fas fa-link"></i> Salin URL untuk OBS</span>
+                </button>
+                <p class="text-[11px] text-center text-slate-500 mt-3">Atur width 1920 dan height 1080 di OBS Browser Source.</p>
+            </div>
+        </aside>
+
+        <main class="flex-1 bg-obs-900 p-4 lg:p-8 flex flex-col items-center justify-center overflow-hidden relative">
+            
+            <!-- Grid Background (Hanya untuk Dashboard) -->
+            <div class="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAiIGhlaWdodD0iMjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGNpcmNsZSBjeD0iMiIgY3k9IjIiIHI9IjEiIGZpbGw9IiMzMzQxNTUiLz48L3N2Zz4=')] opacity-30"></div>
+
+            <div class="mb-4 text-center z-10">
+                <h3 class="text-lg font-bold text-white flex items-center justify-center gap-2">
+                    <span class="relative flex h-3 w-3">
+                      <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                      <span class="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                    </span>
+                    Live Preview (16:9)
+                </h3>
+            </div>
+
+            <!-- Wrapper Canvas -->
+            <div id="preview-wrapper" class="relative w-full max-w-[1280px] aspect-video bg-black rounded-xl border border-obs-700 shadow-2xl overflow-hidden z-10 ring-4 ring-black/50">
+                
+                <!-- Background Dummy Game (Hanya Preview) -->
+                <div class="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-slate-900 to-obs-900" id="dummy-bg">
+                    <i class="fas fa-gamepad text-8xl text-slate-800/50 mb-10"></i>
+                </div>
+
+                <div id="obs-canvas">
+                    <!-- Efek Partikel Canvas -->
+                    <canvas id="bg-fx-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-0"></canvas>
+
+                    <!-- Marquee Top -->
+                    <div id="ov-marquee-container" class="absolute top-0 left-0 w-full bg-gradient-to-r from-transparent via-black/80 to-transparent py-1.5 z-50 hidden">
+                        <div class="w-full overflow-hidden whitespace-nowrap">
+                            <div id="ov-marquee-text" class="inline-block text-white font-semibold text-xl tracking-wide pl-[1920px] will-change-transform animate-[marqueeText_20s_linear_infinite]"></div>
+                        </div>
+                    </div>
+
+                    <!-- Status Kiri Atas -->
+                    <div id="ov-status" class="absolute top-8 left-8 glass-panel px-6 py-2.5 z-40 hidden">
+                        <span id="ov-status-text" class="text-white font-bold text-xl tracking-wider uppercase"></span>
+                    </div>
+
+                    <!-- Jam Kanan Atas -->
+                    <div id="ov-clock" class="absolute top-8 right-8 glass-panel px-6 py-2 z-40">
+                        <span id="ov-clock-text" class="text-3xl font-display font-black theme-text tracking-widest drop-shadow-[0_0_8px_currentColor]">00:00</span>
+                    </div>
+
+                    <!-- Alert Kiri/Tengah (Absolute) -->
+                    <div id="ov-alert" class="absolute top-32 left-1/2 -translate-x-1/2 glass-panel p-4 flex items-center gap-5 z-50 hidden">
+                        <div class="w-20 h-20 rounded-2xl theme-bg flex items-center justify-center shadow-[0_0_30px_currentColor] border-2 border-white/20">
+                            <i id="alert-icon" class="fas fa-star text-white text-4xl"></i>
+                        </div>
+                        <div class="pr-6">
+                            <div class="text-slate-300 text-lg font-medium uppercase tracking-widest text-[14px]">New Supporter</div>
+                            <div id="alert-name" class="text-white font-display font-black text-4xl leading-none mt-1">Username</div>
+                        </div>
+                    </div>
+
+                    <!-- Container Kiri Bawah (Social) -->
+                    <div class="absolute bottom-10 left-10 z-40">
+                        <div id="ov-social" class="glass-panel w-[350px] h-[70px] flex items-center p-2 overflow-hidden relative">
+                            <!-- Icon Container -->
+                            <div id="soc-icon-box" class="w-[54px] h-[54px] rounded-xl flex justify-center items-center text-3xl text-white shadow-lg z-10 transition-colors duration-500 bg-red-600">
+                                <i id="soc-icon" class="fab fa-youtube"></i>
+                            </div>
+                            <!-- Text Container -->
+                            <div class="flex-1 h-full ml-4 relative overflow-hidden">
+                                <div class="absolute w-full h-full flex items-center">
+                                    <span id="soc-text" class="font-display font-bold text-2xl text-white whitespace-nowrap truncate drop-shadow-md">ChannelName</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Container Kanan Bawah (Goal) -->
+                    <div class="absolute bottom-10 right-10 z-40">
+                        <div id="ov-goal" class="glass-panel w-[400px] p-5">
+                            <div class="flex justify-between items-end mb-3">
+                                <span id="ov-goal-title" class="text-slate-300 font-bold text-lg uppercase tracking-wider">Sub Goal</span>
+                                <div class="font-display font-black flex items-baseline gap-1">
+                                    <span id="ov-goal-cur" class="theme-text text-3xl drop-shadow-[0_0_5px_currentColor]">0</span>
+                                    <span class="text-slate-500 text-xl">/</span>
+                                    <span id="ov-goal-max" class="text-slate-400 text-xl">0</span>
+                                </div>
+                            </div>
+                            <!-- Progress Bar -->
+                            <div class="w-full h-4 bg-obs-900 rounded-full p-[2px] border border-white/10 shadow-inner">
+                                <div id="ov-goal-fill" class="h-full rounded-full theme-bg relative overflow-hidden transition-all duration-1000 ease-out" style="width: 0%;">
+                                    <div class="absolute inset-0 bar-shimmer"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Data Tema
+        const THEMES = {
+            cyan: { bg: 'bg-cyan-500', text: 'text-cyan-400', hex: '#06b6d4', glow: 'shadow-cyan-500/50' },
+            indigo: { bg: 'bg-indigo-500', text: 'text-indigo-400', hex: '#6366f1', glow: 'shadow-indigo-500/50' },
+            emerald: { bg: 'bg-emerald-500', text: 'text-emerald-400', hex: '#10b981', glow: 'shadow-emerald-500/50' },
+            amber: { bg: 'bg-amber-500', text: 'text-amber-400', hex: '#f59e0b', glow: 'shadow-amber-500/50' },
+            rose: { bg: 'bg-rose-500', text: 'text-rose-400', hex: '#f43f5e', glow: 'shadow-rose-500/50' }
+        };
+
+        // State Global
+        let state = {
+            theme: 'cyan',
+            fx: 'none',
+            socials: { yt: '', ig: '', tt: '' },
+            goal: { active: true, title: 'Sub Goal', cur: 0, max: 100 },
+            text: { status: '🔴 LIVE', marquee: '' },
+            isOBSMode: false
+        };
+
+        // Custom Toast Notification
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const icon = type === 'success' ? '<i class="fas fa-check-circle text-emerald-400"></i>' : '<i class="fas fa-info-circle text-indigo-400"></i>';
+            const border = type === 'success' ? 'border-emerald-500/30' : 'border-indigo-500/30';
+            
+            toast.className = `glass-panel px-6 py-3 border ${border} flex items-center gap-3 transform transition-all duration-300 translate-y-10 opacity-0`;
+            toast.innerHTML = `${icon} <span class="text-white font-medium text-sm">${message}</span>`;
+            
+            container.appendChild(toast);
+            
+            // Animasi Masuk
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            });
+            
+            // Animasi Keluar
+            setTimeout(() => {
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        // Keyframes dinamis untuk marquee
+        const styleSheet = document.createElement("style");
+        styleSheet.innerText = `@keyframes marqueeText { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }`;
+        document.head.appendChild(styleSheet);
+
+        
+        // --- RENDER VISUAL ---
+        function applyTheme() {
+            const t = THEMES[state.theme];
+            
+            // Update UI Dashboard Theme Selector
+            document.querySelectorAll('#theme-selector button').forEach(btn => {
+                if(btn.dataset.theme === state.theme) {
+                    btn.classList.remove('opacity-50');
+                    btn.classList.add('ring-2', 'ring-offset-2', 'ring-offset-obs-800');
+                } else {
+                    btn.classList.add('opacity-50');
+                    btn.classList.remove('ring-2', 'ring-offset-2', 'ring-offset-obs-800');
+                }
+            });
+
+            // Update Canvas Elements
+            document.querySelectorAll('.theme-bg').forEach(el => {
+                el.className = el.className.replace(/bg-\w+-500/g, ''); // bersihkan yg lama
+                el.classList.add(t.bg);
+            });
+            document.querySelectorAll('.theme-text').forEach(el => {
+                el.className = el.className.replace(/text-\w+-400/g, '');
+                el.classList.add(t.text);
+            });
+
+            // Refresh Particles if active
+            initParticles();
+        }
+
+        function renderCanvas() {
+            // Marquee
+            const marqCont = document.getElementById('ov-marquee-container');
+            const marqText = document.getElementById('ov-marquee-text');
+            if (state.text.marquee.trim()) {
+                marqText.innerHTML = state.text.marquee + " &nbsp;&nbsp;&bull;&nbsp;&nbsp; " + state.text.marquee;
+                marqCont.classList.remove('hidden');
+            } else {
+                marqCont.classList.add('hidden');
+            }
+
+            // Status
+            const statCont = document.getElementById('ov-status');
+            if (state.text.status.trim()) {
+                document.getElementById('ov-status-text').textContent = state.text.status;
+                statCont.classList.remove('hidden');
+            } else {
+                statCont.classList.add('hidden');
+            }
+
+            // Goal
+            const goalCont = document.getElementById('ov-goal');
+            if (state.goal.active) {
+                goalCont.parentElement.classList.remove('hidden');
+                document.getElementById('ov-goal-title').textContent = state.goal.title;
+                document.getElementById('ov-goal-cur').textContent = state.goal.cur;
+                document.getElementById('ov-goal-max').textContent = state.goal.max;
+                
+                let pct = 0;
+                if(state.goal.max > 0) pct = Math.min((state.goal.cur / state.goal.max) * 100, 100);
+                document.getElementById('ov-goal-fill').style.width = `${pct}%`;
+            } else {
+                goalCont.parentElement.classList.add('hidden');
+            }
+
+            // Update Rotator array but don't force restart to prevent jumping
+            buildSocialArray();
+        }
+
+
+        // --- CLOCK ---
+        setInterval(() => {
+            const now = new Date();
+            document.getElementById('ov-clock-text').textContent = now.toLocaleTimeString('id-ID', { hour12: false, hour: '2-digit', minute:'2-digit' });
+        }, 1000);
+
+        // --- SOCIAL ROTATOR ---
+        let activeSocials = [];
+        let socIndex = 0;
+        let socInterval;
+
+        function buildSocialArray() {
+            activeSocials = [];
+            if(state.socials.yt) activeSocials.push({i: 'fab fa-youtube', c: 'bg-red-600', t: state.socials.yt});
+            if(state.socials.ig) activeSocials.push({i: 'fab fa-instagram', c: 'bg-gradient-to-tr from-rose-500 to-fuchsia-600', t: state.socials.ig});
+            if(state.socials.tt) activeSocials.push({i: 'fab fa-tiktok', c: 'bg-black', t: state.socials.tt});
+
+            const socCont = document.getElementById('ov-social');
+            if(activeSocials.length === 0) {
+                socCont.parentElement.classList.add('hidden');
+                clearInterval(socInterval);
+            } else {
+                socCont.parentElement.classList.remove('hidden');
+                if(!socInterval) startSocialRotator();
+            }
+        }
+
+        function startSocialRotator() {
+            const iconBox = document.getElementById('soc-icon-box');
+            const icon = document.getElementById('soc-icon');
+            const text = document.getElementById('soc-text');
+
+            const rotate = () => {
+                if(activeSocials.length === 0) return;
+                const s = activeSocials[socIndex];
+
+                // Animate Out
+                text.classList.remove('slide-up-in');
+                text.classList.add('slide-up-out');
+
+                setTimeout(() => {
+                    // Change Data
+                    iconBox.className = `w-[54px] h-[54px] rounded-xl flex justify-center items-center text-3xl text-white shadow-lg z-10 transition-colors duration-500 ${s.c}`;
+                    icon.className = s.i;
+                    text.textContent = s.t;
+
+                    // Animate In
+                    text.classList.remove('slide-up-out');
+                    text.classList.add('slide-up-in');
+
+                    socIndex = (socIndex + 1) % activeSocials.length;
+                }, 500);
+            };
+
+            rotate(); // run once immediately
+            clearInterval(socInterval);
+            socInterval = setInterval(rotate, 5000); // ganti tiap 5 detik
+        }
+
+        // --- ALERTS ---
+        function triggerDemoAlert() {
+            const alertBox = document.getElementById('ov-alert');
+            const names = ['WindahB', 'RezaArap', 'KoboKanaeru', 'MiawAug'];
+            
+            document.getElementById('alert-name').textContent = names[Math.floor(Math.random() * names.length)];
+            
+            alertBox.classList.remove('hidden', 'alert-pop');
+            void alertBox.offsetWidth; // trigger reflow
+            alertBox.classList.add('alert-pop');
+
+            // Beep Sound (Web Audio API)
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain); gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.setValueAtTime(800, ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(1200, ctx.currentTime + 0.1);
+                gain.gain.setValueAtTime(0, ctx.currentTime);
+                gain.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.05);
+                gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+                osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.5);
+            } catch(e) {} // ignore if audio blocked
+        }
+
+
+        // --- BIND INPUTS TO STATE (Realtime) ---
+        function bindInputs() {
+            const bindObj = (id, obj, key, renderCb) => {
+                const el = document.getElementById(id);
+                if(!el) return;
+                
+                // Set initial value based on URL params if exists
+                if(el.type === 'checkbox') el.checked = obj[key];
+                else el.value = obj[key];
+
+                el.addEventListener('input', (e) => {
+                    obj[key] = el.type === 'checkbox' ? el.checked : (el.type === 'number' ? parseInt(el.value)||0 : el.value);
+                    if(renderCb) renderCb();
+                });
+            };
+
+            bindObj('cfg-soc-yt', state.socials, 'yt', renderCanvas);
+            bindObj('cfg-soc-ig', state.socials, 'ig', renderCanvas);
+            bindObj('cfg-soc-tt', state.socials, 'tt', renderCanvas);
+            
+            bindObj('tgl-goal', state.goal, 'active', renderCanvas);
+            bindObj('cfg-goal-title', state.goal, 'title', renderCanvas);
+            bindObj('cfg-goal-cur', state.goal, 'cur', renderCanvas);
+            bindObj('cfg-goal-max', state.goal, 'max', renderCanvas);
+            
+            bindObj('cfg-status', state.text, 'status', renderCanvas);
+            bindObj('cfg-marquee', state.text, 'marquee', renderCanvas);
+
+            document.querySelectorAll('#theme-selector button').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    state.theme = btn.dataset.theme;
+                    applyTheme();
+                });
+            });
+
+            const fxSelect = document.getElementById('cfg-fx');
+            fxSelect.value = state.fx;
+            fxSelect.addEventListener('change', () => {
+                state.fx = fxSelect.value;
+                initParticles();
+            });
+        }
+
+        // --- AUTO SCALING CANVAS UNTUK PREVIEW ---
+        // Membuat canvas 1920x1080 pas di dalam div preview
+        function scaleCanvas() {
+            if(state.isOBSMode) return; // Jangan di-scale jika sudah di OBS
+            
+            const wrapper = document.getElementById('preview-wrapper');
+            const canvas = document.getElementById('obs-canvas');
+            
+            // Hitung rasio wrapper vs resolusi asli (1920)
+            const scale = wrapper.clientWidth / 1920;
+            canvas.style.transform = `scale(${scale})`;
+        }
+        window.addEventListener('resize', scaleCanvas);
+
+        // --- BACKGROUND EFFECTS (Canvas API) ---
+        let fxAnim;
+        function initParticles() {
+            cancelAnimationFrame(fxAnim);
+            const cvs = document.getElementById('bg-fx-canvas');
+            const ctx = cvs.getContext('2d');
+            cvs.width = 1920; cvs.height = 1080;
+            ctx.clearRect(0,0,cvs.width, cvs.height);
+
+            if(state.fx === 'none') return;
+
+            const hexColor = THEMES[state.theme].hex;
+
+            if(state.fx === 'particles') {
+                const particles = Array.from({length: 100}, () => ({
+                    x: Math.random() * cvs.width, y: Math.random() * cvs.height,
+                    r: Math.random() * 3 + 1, s: Math.random() * 0.5 + 0.1
+                }));
+                function drawPart() {
+                    ctx.clearRect(0,0,cvs.width,cvs.height);
+                    ctx.fillStyle = hexColor;
+                    ctx.globalAlpha = 0.4;
+                    ctx.beginPath();
+                    particles.forEach(p => {
+                        ctx.moveTo(p.x, p.y);
+                        ctx.arc(p.x, p.y, p.r, 0, Math.PI*2);
+                        p.y -= p.s;
+                        if(p.y < -10) { p.y = cvs.height + 10; p.x = Math.random() * cvs.width; }
+                    });
+                    ctx.fill();
+                    fxAnim = requestAnimationFrame(drawPart);
+                }
+                drawPart();
+            } else if (state.fx === 'matrix') {
+                const fontSize = 20;
+                const columns = cvs.width / fontSize;
+                const drops = Array.from({length: columns}, () => Math.random() * cvs.height);
+                
+                ctx.font = fontSize + "px monospace";
+                function drawMatrix() {
+                    ctx.fillStyle = "rgba(0, 0, 0, 0.05)";
+                    ctx.fillRect(0, 0, cvs.width, cvs.height);
+                    ctx.fillStyle = hexColor;
+                    ctx.globalAlpha = 0.3;
+                    
+                    for(let i=0; i<drops.length; i++) {
+                        const text = String.fromCharCode(0x30A0 + Math.random() * 96);
+                        ctx.fillText(text, i*fontSize, drops[i]*fontSize);
+                        if(drops[i]*fontSize > cvs.height && Math.random() > 0.975) drops[i] = 0;
+                        drops[i]++;
+                    }
+                    fxAnim = requestAnimationFrame(drawMatrix);
+                }
+                drawMatrix();
+            }
+        }
+
+
+        // --- GENERATE URL & PARSE URL ---
+        function generateOBSUrl() {
+            // Encode state to Base64 to make URL clean
+            const stateString = JSON.stringify(state);
+            const base64State = btoa(encodeURIComponent(stateString));
+            
+            const baseUrl = window.location.href.split('?')[0];
+            const fullUrl = `${baseUrl}?mode=obs&data=${base64State}`;
+
+            // Copy to clipboard
+            navigator.clipboard.writeText(fullUrl).then(() => {
+                showToast('URL berhasil disalin! Paste di OBS (1920x1080).', 'success');
+            }).catch(err => {
+                // Fallback for older browsers / iframes
+                const input = document.createElement('input');
+                input.value = fullUrl;
+                document.body.appendChild(input);
+                input.select();
+                document.execCommand('copy');
+                document.body.removeChild(input);
+                showToast('URL disalin! Paste di OBS.', 'success');
+            });
+        }
+
+        function initApp() {
+            const urlParams = new URLSearchParams(window.location.search);
+            
+            // Cek apakah ada data tersimpan di URL
+            if(urlParams.has('data')) {
+                try {
+                    const decoded = decodeURIComponent(atob(urlParams.get('data')));
+                    const loadedState = JSON.parse(decoded);
+                    // Merge state
+                    state = { ...state, ...loadedState };
+                } catch(e) { console.error("Gagal membaca config dari URL", e); }
+            }
+
+            // Cek Mode OBS
+            if(urlParams.get('mode') === 'obs') {
+                state.isOBSMode = true;
+                document.body.classList.add('obs-mode');
+                // Dummy bg dihapus di obs mode
+                document.getElementById('dummy-bg').style.display = 'none'; 
+            } else {
+                // Inisialisasi UI Dashboard
+                bindInputs();
+                setTimeout(scaleCanvas, 100); // Scale setelaha render awal
+            }
+
+            // Render Awal Canvas
+            applyTheme();
+            renderCanvas();
+        }
+
+        // Jalankan saat load
+        window.addEventListener('DOMContentLoaded', initApp);
+
+    </script>
+</body>
+</html>
